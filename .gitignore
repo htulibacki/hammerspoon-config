@@ -1,0 +1,9 @@
+# Spoony instalowane przez SpoonInstall - pobierane automatycznie
+Spoons/*.spoon/
+
+# Stan i cache Hammerspoona
+.hs_console_history
+*.log
+
+# macOS
+.DS_Store
