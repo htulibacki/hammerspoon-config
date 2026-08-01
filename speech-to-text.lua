@@ -71,7 +71,12 @@ local function startRecording()
   end, {"start"}):start()
 end
 
+-- Dozorca pilnujacy, czy Ctrl nadal jest wcisniety w trakcie nagrywania.
+-- Zadeklarowany tu, bo stopRecording() musi go zatrzymac.
+local holdWatch = nil
+
 local function stopRecording()
+  if holdWatch then holdWatch:stop() ; holdWatch = nil end
   setState("Przetwarzam…", 0.98, 0.75, 0.18)
   hs.task.new(script, function(code) finish(code) end, {"stop"}):start()
 end
@@ -112,6 +117,16 @@ M.tap = hs.eventtap.new({
     if state == "armed" then
       state = "holding"
       startRecording()
+      -- Dozorca na wypadek zgubionego zdarzenia puszczenia (zdarza sie przy
+      -- szybkim dublecie, gdy "up" trafia w moment startu nagrywania).
+      -- Timer zatrzymuje samo stopRecording(), nie ten callback.
+      if holdWatch then holdWatch:stop() end
+      holdWatch = hs.timer.doEvery(0.1, function()
+        if state == "holding" and not hs.eventtap.checkKeyboardModifiers().ctrl then
+          disarm()
+          stopRecording()
+        end
+      end)
     end
     -- Wciśnięcie w stanie idle samo w sobie nic nie znaczy; dopiero
     -- czyste puszczenie uzbraja mechanizm (patrz niżej).
