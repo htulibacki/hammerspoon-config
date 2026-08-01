@@ -4,18 +4,17 @@
 -- macOS nie traktuje go już specjalnie i można go tu dowolnie obsłużyć.
 --
 -- Zachowanie:
---   * stuknięcie F18, puszczenie, potem klawisz  -> akcja przypisana w M.app/M.bind
---   * dwa szybkie stuknięcia F18                 -> przełączenie Caps Locka
---   * zawahanie się po stuknięciu                -> ściąga z dostępnymi skrótami
---   * Escape albo 2 s bezczynności               -> wyjście z trybu
+--   * stuknięcie Caps Locka, potem klawisz  -> akcja przypisana w M.app/M.bind
+--   * zawahanie się po stuknięciu           -> ściąga z dostępnymi skrótami
+--   * Escape albo 4 s bezczynności          -> wyjście z trybu
 --
 -- Sekwencja zamiast akordu: nie trzeba trzymać Caps Locka podczas naciskania
--- drugiego klawisza.
+-- drugiego klawisza. Przytrzymanie Caps Locka to osobna funkcja — Hyper
+-- (⌃⌥⇧⌘) obsługiwany w całości przez Karabinera, podobnie jak Shift+Caps Lock
+-- przełączające wielkie litery.
 
 local M = {}
 
--- Maksymalna przerwa między stuknięciami, żeby uznać je za dublet.
-local DOUBLE_TAP_GAP = 0.35
 -- Po tylu sekundach bezczynności tryb wygasa sam.
 local TIMEOUT = 4
 -- Po tylu sekundach wahania pokazujemy ściągę. Krócej niż TIMEOUT, żeby zdążyła
@@ -31,7 +30,6 @@ local entries = {}
 
 local timeoutTimer = nil
 local hintTimer = nil
-local pendingTap = nil
 local hint = nil
 
 -- Paleta Solarized Light (Ethan Schoonover). Tło jest ciepłe kremowe, nie białe
@@ -194,20 +192,7 @@ local F18 = 79
 
 M.tap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
   if e:getKeyCode() ~= F18 then return false end
-
-  -- Drugie stuknięcie w oknie dubletu: zamiast wchodzić w tryb, przełączamy
-  -- Caps Locka. Pierwsze stuknięcie zdążyło już otworzyć tryb, więc go zamykamy.
-  if pendingTap then
-    pendingTap:stop() ; pendingTap = nil
-    leave()
-    hs.hid.capslock.toggle()
-    return true
-  end
-
-  -- Pierwsze stuknięcie wchodzi w tryb od razu — czekanie na ewentualny dublet
-  -- opóźniałoby każdy skrót o DOUBLE_TAP_GAP.
   M.mode:enter()
-  pendingTap = hs.timer.doAfter(DOUBLE_TAP_GAP, function() pendingTap = nil end)
   return true
 end)
 
