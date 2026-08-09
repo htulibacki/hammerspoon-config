@@ -182,10 +182,43 @@ local recording = false
 
 local stopClock  -- definicja niżej, przy liczniku; finish() musi go zatrzymać
 
-local function finish(code)
+-- Ile czekać, aż aplikacja odbierze ⌘V, zanim oddamy schowek. Za krótko —
+-- wklei się stara zawartość; niżej niż 0.15 s potrafiło się mylić.
+local PASTE_SETTLE = 0.2
+
+-- Wkleja tekst, oddając potem schowek w stanie, w jakim był. readAllData()
+-- zabiera pierwszy element ze wszystkimi jego reprezentacjami (tekst, RTF,
+-- obrazek, ścieżka pliku), więc wraca nie sam tekst, jak przy pbpaste.
+--
+-- Menedżery schowka z historią i tak zapiszą przelotny wpis z transkrypcją —
+-- tego nie da się obejść, wklejając przez schowek.
+-- Ostatnia transkrypcja, do ponownego wklejenia. Przydaje się, gdy pierwsze
+-- wklejenie trafiło w pole tylko do odczytu albo w niewłaściwe okno.
+local lastText = nil
+
+local function pasteText(text)
+  lastText = text
+  local saved = hs.pasteboard.readAllData()
+
+  hs.pasteboard.setContents(text)
+  hs.eventtap.keyStroke({ "cmd" }, "v", 0)
+
+  hs.timer.doAfter(PASTE_SETTLE, function()
+    if saved and next(saved) then
+      hs.pasteboard.writeAllData(saved)
+    else
+      -- Pusty schowek na wejściu: zostawiamy go pustym, zamiast trzymać
+      -- w nim transkrypcję.
+      hs.pasteboard.clearContents()
+    end
+  end)
+end
+
+local function finish(code, output)
   recording = false
   stopClock()
   if code == 0 then
+    if output and output ~= "" then pasteText(output) end
     hide()
   else
     setState(errors[code] or ("Błąd " .. code), DOT.active, ICON.idle)
@@ -235,7 +268,9 @@ stopRecording = function()
   recording = false
   setState("Przetwarzam…", DOT.working, ICON.working)
   setProgress(0)
-  hs.task.new(script, function(code) finish(code) end, {"stop"}):start()
+  hs.task.new(script, function(code, stdout)
+    finish(code, stdout)
+  end, {"stop"}):start()
 end
 
 -- Przełącznik: pierwsze wciśnięcie zaczyna nagrywanie, drugie je kończy.
@@ -248,6 +283,24 @@ M.trigger = hs.hotkey.bind(HYPER, "q", function()
     recording = true
     startRecording()
   end
+end)
+
+-- Ponowne wklejenie ostatniej transkrypcji — ratunek, gdy pierwsze wklejenie
+-- poszło w niewłaściwe okno albo w pole tylko do odczytu.
+--
+-- Klawisz obok lewego Shifta. Karabiner zamienia go na non_us_backslash, co
+-- przy układzie ISO daje backtick — i pod tym znakiem widzi go hs.keycodes.map.
+-- Reguły Karabinera nie kaskadują, więc podmiana kończy się na tym jednym
+-- kroku; sam klawisz zachowuje swój ` i ~ poza kombinacją z Hyperem.
+M.repeatPaste = hs.hotkey.bind(HYPER, "`", function()
+  show()
+  if lastText then
+    pasteText(lastText)
+    setState("Wklejono ponownie", DOT.working, ICON.idle)
+  else
+    setState("Brak transkrypcji", DOT.idle, ICON.idle)
+  end
+  hide(1.2)
 end)
 
 return M
