@@ -7,15 +7,20 @@ local HYPER = { "ctrl", "alt", "shift", "cmd" }
 
 -- Wygląd overlaya. Ta sama paleta i proporcje co ściąga w hyper.lua, żeby oba
 -- wskaźniki wyglądały jak jedna rodzina.
-local W, H = 240, 62
+-- Szerokość mieści najdłuższy komunikat („Nic nie rozpoznano") razem z ikoną
+-- i marginesami — przy 240 px był obcinany.
+local W, H = 268, 62
 -- Odstęp od dolnej krawędzi ekranu.
 local BOTTOM_MARGIN = 120
 -- Rozmiar tekstu; wysokość linii potrzebna do wyrównania go z ikoną.
 local TEXT_SIZE = 16
 local LINE_H = 21
 -- Ikona stanu — glify Nerd Fonts z Prywatnego Obszaru Użytku.
-local ICON_SIZE = 23
-local ICON_W = 26       -- szerokość pola ikony
+local ICON_SIZE = 26
+local ICON_W = 29       -- szerokość pola ikony
+-- Glify Nerd Fonts siedzą w swojej ramce nieco wyżej niż środek, więc samo
+-- wyśrodkowanie zostawia je odrobinę za wysoko względem tekstu.
+local ICON_BASELINE = 2
 local ICON_GAP = 10     -- odstęp między ikoną a tekstem
 local PAD = 16          -- minimalny margines przy krawędziach płytki
 -- Krycie tafli odmierzającej czas. Na tyle niskie, żeby tekst nad nią pozostał
@@ -26,7 +31,12 @@ local PROGRESS_ALPHA = 0.18
 local ICON = {
   idle    = "\u{f036e}",  -- nf-md-microphone_outline
   active  = "\u{f036e}",  -- ten sam mikrofon, odróżnia go kolor
+  -- Ten glif służy już tylko za znacznik stanu: samo kółko rysuje startSpinner()
+  -- jako łuk, bo tekstu z fontu nie da się pewnie obracać wokół środka.
   working = "\u{f0772}",  -- nf-md-loading
+  error   = "\u{f05d6}",  -- nf-md-alert_circle_outline
+  empty   = "\u{f036d}",  -- nf-md-microphone_off — nagranie bez treści
+  pasted  = "\u{f05e1}",  -- nf-md-check_circle_outline
 }
 local S = {
   base3  = { red = 0.99, green = 0.96, blue = 0.89 },  -- #fdf6e3
@@ -122,6 +132,14 @@ end
 
 local show  -- setState() jest niżej, a show() go potrzebuje
 
+-- Ostatnio ustawiona ikona wraz z jej ramką i kolorem. Animacja spinnera
+-- przerysowuje ten sam element, więc musi znać jego pozycję.
+local iconState = nil
+
+-- Definicje przy animacji spinnera niżej; setState() steruje nimi na podstawie
+-- tego, którą ikonę dostał.
+local startSpinner, stopSpinner
+
 -- Ustawia komunikat i przesuwa ikonę z tekstem tak, by razem stały na środku.
 local function setState(text, dot, icon)
   if not overlay then return end
@@ -135,14 +153,24 @@ local function setState(text, dot, icon)
 
   local axis = H / 2
 
+  -- Ikona i tekst dostają ramki o tej samej wysokości, wyśrodkowane na wspólnej
+  -- osi — wtedy oba trafiają w tę samą linię bazową niezależnie od ICON_SIZE.
+  local iconH = ICON_SIZE * 1.5
+
+  iconState = {
+    glyph = icon or ICON.idle,
+    dot = dot,
+    frame = { x = left, y = axis - iconH / 2 + ICON_BASELINE,
+              w = ICON_W, h = iconH },
+  }
+
   -- Elementy podmieniamy w całości. Przypisanie pojedynczego pola (frame.x)
   -- każe hs.canvas dobrać brakujące wartości domyślne i kończy się błędem.
-  overlay[6] = { type = "text", text = icon or ICON.idle, textSize = ICON_SIZE,
+  overlay[6] = { type = "text", text = iconState.glyph, textSize = ICON_SIZE,
                  textColor = color(dot),
                  textFont = "JetBrainsMonoNF-Regular",
                  textAlignment = "center",
-                 frame = { x = left, y = axis - ICON_SIZE * 0.72,
-                           w = ICON_W, h = ICON_SIZE * 1.5 } }
+                 frame = iconState.frame }
 
   overlay[7] = { type = "text", text = text, textSize = TEXT_SIZE,
                  textColor = color(S.base01),
@@ -150,6 +178,57 @@ local function setState(text, dot, icon)
                  frame = { x = left + ICON_W + ICON_GAP, y = axis - LINE_H / 2,
                            w = math.min(textW, W - left - ICON_W - ICON_GAP - PAD),
                            h = LINE_H } }
+
+  -- Kręci się tylko spinner; każdy inny stan zatrzymuje animację, więc nie ma
+  -- potrzeby pamiętać o tym w wywołaniach setState().
+  if iconState.glyph == ICON.working then startSpinner() else stopSpinner() end
+end
+
+-- Obracający się spinner na czas przetwarzania -------------------------------
+
+local spinner = nil
+-- Krok animacji i kąt na krok. 24 klatki na obrót przy 1/24 s dają pełny obieg
+-- w sekundę — płynnie, a przy jednym elemencie canvasu kosztuje tyle co nic.
+local SPIN_TICK = 1 / 24
+local SPIN_STEP = 360 / 24
+-- Jaki wycinek okręgu rysujemy. 280° zostawia wyraźną przerwę, dzięki której
+-- widać, że kółko się kręci.
+local SPIN_SWEEP = 280
+
+stopSpinner = function()
+  if spinner then spinner:stop() ; spinner = nil end
+end
+
+startSpinner = function()
+  stopSpinner()
+  if not iconState then return end
+
+  -- Zamiast obracać glif z fontu rysujemy łuk i przesuwamy jego zakres kątów.
+  -- Środek jest wtedy dokładnie tam, gdzie go podamy — obrót nie może uciec,
+  -- bo nic się nie transformuje.
+  -- Ramka glifu jest zsunięta w dół o ICON_BASELINE, żeby litery trafiły w linię
+  -- tekstu. Łuk nie ma linii bazowej, więc tę korektę trzeba tu cofnąć —
+  -- inaczej kółko wisiałoby niżej niż pozostałe ikony.
+  local f = iconState.frame
+  local center = { x = f.x + f.w / 2, y = f.y + f.h / 2 - ICON_BASELINE }
+  local radius = ICON_SIZE * 0.42
+  local angle = 0
+
+  spinner = hs.timer.doEvery(SPIN_TICK, function()
+    if not overlay or not iconState then stopSpinner() ; return end
+
+    angle = (angle + SPIN_STEP) % 360
+
+    overlay[6] = { type = "arc", action = "stroke",
+                   center = center,
+                   radius = radius,
+                   startAngle = angle,
+                   endAngle = angle + SPIN_SWEEP,
+                   arcRadii = false,
+                   strokeColor = color(iconState.dot),
+                   strokeWidth = 2,
+                   strokeCapStyle = "round" }
+  end)
 end
 
 -- Szerokość ciemniejszej tafli jako ułamek 0..1 pozostałego czasu. Bez własnego
@@ -172,8 +251,10 @@ end
 
 local function hide(delay)
   if not overlay then return end
+  stopSpinner()
   local o = overlay
   overlay = nil
+  iconState = nil
   hs.timer.doAfter(delay or 0, function() o:hide(0.15) ; o:delete() end)
 end
 
@@ -223,7 +304,11 @@ local function finish(code, output)
     if output and output ~= "" then pasteText(output) end
     hide()
   else
-    setState(errors[code] or ("Błąd " .. code), DOT.active, ICON.idle)
+    -- 10 i 11 to puste nagranie albo brak mowy — nie usterka, więc łagodniejsza
+    -- ikona niż przy realnym błędzie.
+    local quiet = (code == 10 or code == 11)
+    setState(errors[code] or ("Błąd " .. code), DOT.active,
+             quiet and ICON.empty or ICON.error)
     hide(2.5)
   end
 end
@@ -298,9 +383,9 @@ M.repeatPaste = hs.hotkey.bind(HYPER, "`", function()
   show()
   if lastText then
     pasteText(lastText)
-    setState("Wklejono ponownie", DOT.working, ICON.idle)
+    setState("Wklejono ponownie", DOT.working, ICON.pasted)
   else
-    setState("Brak transkrypcji", DOT.idle, ICON.idle)
+    setState("Brak transkrypcji", DOT.idle, ICON.empty)
   end
   hide(1.2)
 end)
