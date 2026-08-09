@@ -29,8 +29,8 @@ local PROGRESS_ALPHA = 0.18
 -- Warianty konturowe z Material Design Icons zamiast wypełnionych z Font
 -- Awesome — lżejsze i spójne z cienkimi liniami reszty overlaya.
 local ICON = {
-  idle    = "\u{f036e}",  -- nf-md-microphone_outline
-  active  = "\u{f036e}",  -- ten sam mikrofon, odróżnia go kolor
+  -- Mikrofon pojawia się wyłącznie wtedy, gdy nagranie faktycznie trwa.
+  active  = "\u{f036e}",  -- nf-md-microphone_outline
   -- Ten glif służy już tylko za znacznik stanu: samo kółko rysuje startSpinner()
   -- jako łuk, bo tekstu z fontu nie da się pewnie obracać wokół środka.
   working = "\u{f0772}",  -- nf-md-loading
@@ -116,7 +116,7 @@ local function build()
   -- Ikona i tekst tworzą jedną grupę wyśrodkowaną w płytce — inaczej przy
   -- krótkim komunikacie zostawałaby pusta przestrzeń po prawej.
   -- Indeksy [6] i [7] są używane przez setState().
-  c[6] = { type = "text", text = ICON.idle, textSize = ICON_SIZE,
+  c[6] = { type = "text", text = ICON.working, textSize = ICON_SIZE,
            textColor = color(DOT.idle),
            textFont = "JetBrainsMonoNF-Regular",
            textAlignment = "center",
@@ -158,7 +158,7 @@ local function setState(text, dot, icon)
   local iconH = ICON_SIZE * 1.5
 
   iconState = {
-    glyph = icon or ICON.idle,
+    glyph = icon or ICON.working,
     dot = dot,
     frame = { x = left, y = axis - iconH / 2 + ICON_BASELINE,
               w = ICON_W, h = iconH },
@@ -245,7 +245,10 @@ end
 show = function()
   if overlay then overlay:delete() end
   overlay = build()
-  setState("Czekaj…", DOT.idle, ICON.idle)
+  -- Zanim rec wystartuje, nic jeszcze nie nagrywamy — mikrofon zarezerwowany
+  -- jest dla trwającego nagrania, więc tu kręci się to samo kółko co przy
+  -- przetwarzaniu.
+  setState("Czekaj…", DOT.idle, ICON.working)
   overlay:show(0.12)
 end
 
