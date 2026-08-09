@@ -205,7 +205,7 @@ M.app("s", "Spark Desktop")
 M.app("d", "Discord")
 M.app("c", "Claude")
 M.app("1", "1Password")
-M.app("x", "CleanShot X")
+M.app("w", "Messages")
 M.app("n", "Nimble Commander")
 
 return M
