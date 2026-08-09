@@ -14,17 +14,19 @@ local BOTTOM_MARGIN = 120
 local TEXT_SIZE = 16
 local LINE_H = 21
 -- Ikona stanu — glify Nerd Fonts z Prywatnego Obszaru Użytku.
-local ICON_SIZE = 19
-local ICON_W = 22       -- szerokość pola ikony
+local ICON_SIZE = 23
+local ICON_W = 26       -- szerokość pola ikony
 local ICON_GAP = 10     -- odstęp między ikoną a tekstem
 local PAD = 16          -- minimalny margines przy krawędziach płytki
 -- Krycie tafli odmierzającej czas. Na tyle niskie, żeby tekst nad nią pozostał
 -- czytelny, a różnica względem tła była wyraźna.
 local PROGRESS_ALPHA = 0.18
+-- Warianty konturowe z Material Design Icons zamiast wypełnionych z Font
+-- Awesome — lżejsze i spójne z cienkimi liniami reszty overlaya.
 local ICON = {
-  idle    = "\u{f130}",  -- nf-fa-microphone
-  active  = "\u{f130}",  -- ten sam mikrofon, odróżnia go kolor
-  working = "\u{f110}",  -- nf-fa-spinner
+  idle    = "\u{f036e}",  -- nf-md-microphone_outline
+  active  = "\u{f036e}",  -- ten sam mikrofon, odróżnia go kolor
+  working = "\u{f0772}",  -- nf-md-loading
 }
 local S = {
   base3  = { red = 0.99, green = 0.96, blue = 0.89 },  -- #fdf6e3
