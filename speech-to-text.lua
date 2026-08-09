@@ -28,15 +28,19 @@ local PAD = 16          -- minimalny margines przy krawędziach płytki
 local PROGRESS_ALPHA = 0.18
 -- Warianty konturowe z Material Design Icons zamiast wypełnionych z Font
 -- Awesome — lżejsze i spójne z cienkimi liniami reszty overlaya.
+-- Każdy stan ma własną ikonę — po kształcie widać, co się dzieje, bez czytania
+-- podpisu.
 local ICON = {
   -- Mikrofon pojawia się wyłącznie wtedy, gdy nagranie faktycznie trwa.
-  active  = "\u{f036e}",  -- nf-md-microphone_outline
+  active   = "\u{f036e}",  -- nf-md-microphone_outline
   -- Ten glif służy już tylko za znacznik stanu: samo kółko rysuje startSpinner()
   -- jako łuk, bo tekstu z fontu nie da się pewnie obracać wokół środka.
-  working = "\u{f0772}",  -- nf-md-loading
-  error   = "\u{f05d6}",  -- nf-md-alert_circle_outline
-  empty   = "\u{f036d}",  -- nf-md-microphone_off — nagranie bez treści
-  pasted  = "\u{f05e1}",  -- nf-md-check_circle_outline
+  working  = "\u{f0772}",  -- nf-md-loading
+  error    = "\u{f05d6}",  -- nf-md-alert_circle_outline — realna usterka
+  silence  = "\u{f036d}",  -- nf-md-microphone_off — nagranie bez mowy
+  nothing  = "\u{f0ead}",  -- nf-md-text_box_remove_outline — brak transkrypcji
+  canceled = "\u{f015a}",  -- nf-md-close_circle_outline — przerwane Escapem
+  pasted   = "\u{f05e1}",  -- nf-md-check_circle_outline
 }
 local S = {
   base3  = { red = 0.99, green = 0.96, blue = 0.89 },  -- #fdf6e3
@@ -311,7 +315,7 @@ local function finish(code, output)
     -- ikona niż przy realnym błędzie.
     local quiet = (code == 10 or code == 11)
     setState(errors[code] or ("Błąd " .. code), DOT.active,
-             quiet and ICON.empty or ICON.error)
+             quiet and ICON.silence or ICON.error)
     hide(2.5)
   end
 end
@@ -337,6 +341,7 @@ end
 
 local function startRecording()
   show()
+  M.escape:enable()
   hs.task.new(script, function()
     local since = hs.timer.secondsSinceEpoch()
     setState("Nagrywanie", DOT.active, ICON.active)
@@ -355,6 +360,7 @@ end
 
 stopRecording = function()
   stopClock()
+  M.escape:disable()
   recording = false
   setState("Przetwarzam…", DOT.working, ICON.working)
   setProgress(0)
@@ -362,6 +368,22 @@ stopRecording = function()
     finish(code, stdout)
   end, {"stop"}):start()
 end
+
+-- Przerwanie: nagranie leci do kosza, whisper nie jest uruchamiany.
+local function cancelRecording()
+  stopClock()
+  M.escape:disable()
+  recording = false
+  setState("Przerwano", DOT.idle, ICON.canceled)
+  setProgress(0)
+  hide(1.0)
+  hs.task.new(script, nil, {"cancel"}):start()
+end
+
+-- Escape przerywa nagranie. Skrót istnieje przez cały czas, ale włączony jest
+-- tylko na czas nagrywania — inaczej przejąłby Escape w całym systemie.
+M.escape = hs.hotkey.new({}, "escape", cancelRecording)
+M.escape:disable()
 
 -- Przełącznik: pierwsze wciśnięcie zaczyna nagrywanie, drugie je kończy.
 -- Nie ma tu nic do przytrzymania, więc nagranie nie urywa się przez
@@ -388,7 +410,7 @@ M.repeatPaste = hs.hotkey.bind(HYPER, "`", function()
     pasteText(lastText)
     setState("Wklejono ponownie", DOT.working, ICON.pasted)
   else
-    setState("Brak transkrypcji", DOT.idle, ICON.empty)
+    setState("Brak transkrypcji", DOT.idle, ICON.nothing)
   end
   hide(1.2)
 end)
