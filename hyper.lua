@@ -187,16 +187,11 @@ function M.app(key, name)
   M.bind(key, name, function() hs.application.launchOrFocus(name) end)
 end
 
--- Wirtualny keyCode F18. Nie myl z numerem klawisza funkcyjnego.
-local F18 = 79
-
-M.tap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
-  if e:getKeyCode() ~= F18 then return false end
-  M.mode:enter()
-  return true
-end)
-
-M.tap:start()
+-- Wejście w tryb. hs.hotkey zamiast hs.eventtap z dwóch powodów: łapie tylko
+-- ten jeden klawisz zamiast przepuszczać przez Lua każde wciśnięcie w systemie,
+-- a callback trzyma po stronie C w rejestrze Lua, więc nie zależy od tego, czy
+-- coś w Lua wciąż się do niego odwołuje.
+M.trigger = hs.hotkey.bind({}, "f18", function() M.mode:enter() end)
 
 -- Skróty ------------------------------------------------------------------
 
