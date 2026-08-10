@@ -286,7 +286,7 @@ local PASTE_SETTLE = 0.2
 -- wklejenie trafiło w pole tylko do odczytu albo w niewłaściwe okno.
 local lastText = nil
 
-local function pasteText(text)
+local function pasteText(text, submit)
   lastText = text
   local saved = hs.pasteboard.readAllData()
 
@@ -301,14 +301,18 @@ local function pasteText(text)
       -- w nim transkrypcję.
       hs.pasteboard.clearContents()
     end
+
+    -- Enter dopiero po oddaniu schowka: aplikacja może na niego zareagować
+    -- wysłaniem i przerysowaniem pola, a wtedy przywracanie wpadałoby w środek.
+    if submit then hs.eventtap.keyStroke({}, "return", 0) end
   end)
 end
 
-local function finish(code, output)
+local function finish(code, output, submit)
   recording = false
   stopClock()
   if code == 0 then
-    if output and output ~= "" then pasteText(output) end
+    if output and output ~= "" then pasteText(output, submit) end
     hide()
   else
     -- 10 i 11 to puste nagranie albo brak mowy — nie usterka, więc łagodniejsza
@@ -342,6 +346,7 @@ end
 local function startRecording()
   show()
   M.escape:enable()
+  M.submit:enable()
   hs.task.new(script, function()
     local since = hs.timer.secondsSinceEpoch()
     setState("Nagrywanie", DOT.active, ICON.active)
@@ -358,14 +363,17 @@ local function startRecording()
   end, {"start"}):start()
 end
 
-stopRecording = function()
+-- submit: po wklejeniu dorzuca Enter, czyli zatwierdza wpisany tekst w miejscu,
+-- w którym wylądował.
+stopRecording = function(submit)
   stopClock()
   M.escape:disable()
+  M.submit:disable()
   recording = false
   setState("Przetwarzam…", DOT.working, ICON.working)
   setProgress(0)
   hs.task.new(script, function(code, stdout)
-    finish(code, stdout)
+    finish(code, stdout, submit)
   end, {"stop"}):start()
 end
 
@@ -373,6 +381,7 @@ end
 local function cancelRecording()
   stopClock()
   M.escape:disable()
+  M.submit:disable()
   recording = false
   setState("Przerwano", DOT.idle, ICON.canceled)
   setProgress(0)
@@ -384,6 +393,13 @@ end
 -- tylko na czas nagrywania — inaczej przejąłby Escape w całym systemie.
 M.escape = hs.hotkey.new({}, "escape", cancelRecording)
 M.escape:disable()
+
+-- Enter kończy nagranie tak samo jak ponowny Hyper+Q, ale po wklejeniu zatwierdza
+-- tekst. Jak Escape, włączony tylko na czas nagrywania — inaczej zjadałby Enter
+-- wszędzie. Wyłącza się w stopRecording(), więc Enter naciśnięty przez nas przy
+-- wklejaniu nie wpada z powrotem tutaj.
+M.submit = hs.hotkey.new({}, "return", function() stopRecording(true) end)
+M.submit:disable()
 
 -- Przełącznik: pierwsze wciśnięcie zaczyna nagrywanie, drugie je kończy.
 -- Nie ma tu nic do przytrzymania, więc nagranie nie urywa się przez
