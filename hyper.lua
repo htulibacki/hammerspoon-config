@@ -259,15 +259,20 @@ end
 -- na czas trybu i przechwytuje zdarzenie (zwraca true), żeby przypadkowa litera
 -- nie wpadła do okna pod spodem.
 --
--- Klawisze przypisane obsługuje modal, który dostaje je przed tym tapem, więc
--- tu trafiają wyłącznie pudła. Wyjątek to modyfikatory — te lecą osobnym typem
+-- Tap widzi zdarzenie przed modalem, więc przypisane klawisze musi rozpoznać
+-- sam i przepuścić dalej — inaczej zjadłby własne skróty. Escape też idzie
+-- dalej: ma w modalu swoje ciche wyjście. Modyfikatory lecą osobnym typem
 -- zdarzenia (flagsChanged), więc samo sięgnięcie po Shift trybu nie przerwie.
 unboundTap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
   local name = hs.keycodes.map[e:getKeyCode()]
 
+  if name == "escape" then return false end
+  for _, entry in ipairs(entries) do
+    if entry.key == name then return false end
+  end
+
   leave()
-  -- Escape ma własne wyjście bez komunikatu — cichy odwrót to nie pomyłka.
-  if name ~= "escape" then showUnbound(KEY_LABEL[name] or name or "?") end
+  showUnbound(KEY_LABEL[name] or name or "?")
 
   return true
 end)
