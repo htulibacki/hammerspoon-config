@@ -32,6 +32,21 @@ local entries = {}
 -- zestaw skrótów: pod trzymanym Hyperem litery z M.bind nie działają.
 local chords = {}
 
+-- Kafelkowanie okien z macOS, przestawione z domyślnego fn+ctrl na Hypera.
+-- Rejestruje je system, nie ta konfiguracja — są tu wyłącznie po to, żeby
+-- ściąga pokazywała wszystko, co Hyper potrafi, a nie tylko nasze akordy.
+local system = {
+  { key = "⏎", label = "Wypełnij" },
+  { key = "↑", label = "Wyśrodkuj" },
+  { key = "↓", label = "Poprzednia wielkość" },
+  { key = "←", label = "Lewa połowa" },
+  { key = "→", label = "Prawa połowa" },
+  { key = "1", label = "Górna lewa ćwiartka" },
+  { key = "2", label = "Górna prawa ćwiartka" },
+  { key = "3", label = "Dolna lewa ćwiartka" },
+  { key = "4", label = "Dolna prawa ćwiartka" },
+}
+
 -- Hyper (⌃⌥⇧⌘) składa Karabiner z przytrzymanego Caps Locka.
 local HYPER = { "ctrl", "alt", "shift", "cmd" }
 
@@ -374,6 +389,10 @@ M.hintKey = hs.hotkey.bind({}, "f19", function()
     rows[#rows+1] = { key = e.key, label = e.label, dim = false }
   end
   if #rows == 0 then return end
+  -- Systemowe niżej i przygaszone: nie pochodzą stąd, więc nie udają naszych.
+  for _, e in ipairs(system) do
+    rows[#rows+1] = { key = e.key, label = e.label, dim = true }
+  end
   -- Ta ściąga nie przechodzi przez M.chord, więc w rejestrze jej nie ma.
   rows[#rows+1] = { key = "/", label = "ta ściąga", dim = true }
   rows[#rows+1] = { key = "esc", label = "zamknij", dim = true }
