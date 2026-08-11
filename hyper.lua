@@ -162,15 +162,122 @@ local function hideHint()
   if hint then hint:hide(0.12) ; hint:delete() ; hint = nil end
 end
 
+-- Komunikat o nieprzypisanym klawiszu ---------------------------------------
+--
+-- Nie ściąga, tylko wąski toast przy dolnej krawędzi — pomyłka nie zasługuje na
+-- płytkę na środku ekranu. Wysokość i margines jak w overlayu dyktowania, żeby
+-- oba wskaźniki wyglądały jak jedna rodzina.
+
+local unbound = nil
+local unboundTimer = nil
+-- Na tyle długo, żeby dało się przeczytać, na tyle krótko, żeby nie zawadzał.
+local UNBOUND_TIME = 1.2
+local TOAST_H = 44
+local TOAST_BOTTOM = 120
+local TOAST_PAD = 18
+local TOAST_TEXT = 14
+-- nf-md-keyboard_off_outline — klawisz, który nic nie robi.
+local TOAST_ICON = "\u{f0e4b}"
+local TOAST_ICON_SIZE = 18
+
+-- Nazwy z hs.keycodes.map bywają nieczytelne albo za długie na wąski toast.
+local KEY_LABEL = {
+  ["space"] = "spacja",
+  ["return"] = "enter",
+  ["delete"] = "backspace",
+  ["forwarddelete"] = "delete",
+  ["left"] = "←", ["right"] = "→", ["up"] = "↑", ["down"] = "↓",
+}
+
+local function hideUnbound()
+  if unboundTimer then unboundTimer:stop() ; unboundTimer = nil end
+  if unbound then unbound:hide(0.12) ; unbound:delete() ; unbound = nil end
+end
+
+local function showUnbound(key)
+  hideUnbound()
+
+  local text = "Brak skrótu: " .. key
+  -- JetBrains Mono jest monospace, więc szerokość liczymy z liczby znaków.
+  local textW = math.ceil(utf8.len(text) * TOAST_TEXT * 0.6) + 2
+  local w = TOAST_PAD * 2 + TOAST_ICON_SIZE + 10 + textW
+
+  local f = hs.screen.mainScreen():frame()
+  local c = hs.canvas.new({
+    x = f.x + (f.w - w) / 2,
+    y = f.y + f.h - TOAST_H - TOAST_BOTTOM,
+    w = w, h = TOAST_H,
+  })
+  c:level(hs.canvas.windowLevels.overlay)
+  c:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
+  c:clickActivating(false)
+
+  local radii = { xRadius = TOAST_H / 2, yRadius = TOAST_H / 2 }
+
+  c[1] = { type = "rectangle", action = "fill",
+           roundedRectRadii = radii,
+           fillColor = { alpha = 0.28, white = 0 },
+           frame = { x = 2, y = 6, w = w - 4, h = TOAST_H - 10 } }
+
+  c[2] = { type = "rectangle", action = "strokeAndFill",
+           roundedRectRadii = radii,
+           fillColor = color(S.base2, 0.98),
+           strokeColor = color(S.base1, 0.35),
+           strokeWidth = 1 }
+
+  c[3] = { type = "text", text = TOAST_ICON, textSize = TOAST_ICON_SIZE,
+           textColor = color(S.base00, 0.8),
+           textFont = "JetBrainsMonoNF-Regular",
+           textAlignment = "center",
+           frame = { x = TOAST_PAD, y = (TOAST_H - TOAST_ICON_SIZE * 1.4) / 2,
+                     w = TOAST_ICON_SIZE, h = TOAST_ICON_SIZE * 1.4 } }
+
+  c[4] = { type = "text", text = text, textSize = TOAST_TEXT,
+           textColor = color(S.base01),
+           textFont = "JetBrainsMonoNF-Regular",
+           frame = { x = TOAST_PAD + TOAST_ICON_SIZE + 10,
+                     y = (TOAST_H - TOAST_TEXT * 1.35) / 2,
+                     w = textW, h = TOAST_TEXT * 1.35 } }
+
+  unbound = c
+  unbound:show(0.12)
+  unboundTimer = hs.timer.doAfter(UNBOUND_TIME, hideUnbound)
+end
+
+-- Definicja niżej, przy trybie; leave() musi go zatrzymać przy każdym wyjściu.
+local unboundTap
+
 local function leave()
   if timeoutTimer then timeoutTimer:stop() ; timeoutTimer = nil end
+  if unboundTap then unboundTap:stop() end
   hideHint()
   M.mode:exit()
 end
 
+-- Klawisz spoza spisu kończy tryb komunikatem. Modal reaguje tylko na to, co ma
+-- podpięte, więc „cokolwiek innego" trzeba złapać osobno — eventtap żyje tylko
+-- na czas trybu i przechwytuje zdarzenie (zwraca true), żeby przypadkowa litera
+-- nie wpadła do okna pod spodem.
+--
+-- Klawisze przypisane obsługuje modal, który dostaje je przed tym tapem, więc
+-- tu trafiają wyłącznie pudła. Wyjątek to modyfikatory — te lecą osobnym typem
+-- zdarzenia (flagsChanged), więc samo sięgnięcie po Shift trybu nie przerwie.
+unboundTap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
+  local name = hs.keycodes.map[e:getKeyCode()]
+
+  leave()
+  -- Escape ma własne wyjście bez komunikatu — cichy odwrót to nie pomyłka.
+  if name ~= "escape" then showUnbound(KEY_LABEL[name] or name or "?") end
+
+  return true
+end)
+
 function M.mode:entered()
   if timeoutTimer then timeoutTimer:stop() end
   timeoutTimer = hs.timer.doAfter(TIMEOUT, leave)
+
+  hideUnbound()
+  unboundTap:start()
 
   -- Ściąga tylko dla wahających się — kto zna skrót, nie zdąży jej zobaczyć.
   hideHint()
