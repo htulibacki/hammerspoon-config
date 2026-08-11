@@ -35,16 +35,18 @@ local chords = {}
 -- Kafelkowanie okien z macOS, przestawione z domyślnego fn+ctrl na Hypera.
 -- Rejestruje je system, nie ta konfiguracja — są tu wyłącznie po to, żeby
 -- ściąga pokazywała wszystko, co Hyper potrafi, a nie tylko nasze akordy.
+-- name to nazwa z hs.keycodes.map — po niej rozpoznajemy te akordy w tapie
+-- wykrywającym nieprzypisane; key służy tylko do wyświetlenia.
 local system = {
-  { key = "⏎", label = "Wypełnij" },
-  { key = "↑", label = "Wyśrodkuj" },
-  { key = "↓", label = "Poprzednia wielkość" },
-  { key = "←", label = "Lewa połowa" },
-  { key = "→", label = "Prawa połowa" },
-  { key = "1", label = "Górna lewa ćwiartka" },
-  { key = "2", label = "Górna prawa ćwiartka" },
-  { key = "3", label = "Dolna lewa ćwiartka" },
-  { key = "4", label = "Dolna prawa ćwiartka" },
+  { key = "⏎", name = "return", label = "Wypełnij" },
+  { key = "↑", name = "up",     label = "Wyśrodkuj" },
+  { key = "↓", name = "down",   label = "Poprzednia wielkość" },
+  { key = "←", name = "left",   label = "Lewa połowa" },
+  { key = "→", name = "right",  label = "Prawa połowa" },
+  { key = "1", name = "1",      label = "Górna lewa ćwiartka" },
+  { key = "2", name = "2",      label = "Górna prawa ćwiartka" },
+  { key = "3", name = "3",      label = "Dolna lewa ćwiartka" },
+  { key = "4", name = "4",      label = "Dolna prawa ćwiartka" },
 }
 
 -- Hyper (⌃⌥⇧⌘) składa Karabiner z przytrzymanego Caps Locka.
@@ -371,6 +373,34 @@ end
 -- w całym systemie.
 M.chordEscape = hs.hotkey.new({}, "escape", function() hideChordHint() end)
 M.chordEscape:disable()
+
+-- Nieprzypisany akord Hypera -------------------------------------------------
+--
+-- Hyper nie ma trybu, w który dałoby się wejść i nasłuchiwać — akord jest albo
+-- zarejestrowany, albo nie. Wykrycie pudła wymaga więc stałego tapa na każde
+-- wciśnięcie z kompletem modyfikatorów.
+--
+-- Tap tylko podgląda: zwraca false, więc niczego nie przechwytuje i nie może
+-- popsuć działającego skrótu. Zarejestrowane akordy trafiają tu również (bez
+-- wpływu na ich działanie), stąd sprawdzanie rejestru przed pokazaniem toasta.
+M.hyperTap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(e)
+  local f = e:getFlags()
+  if not (f.ctrl and f.alt and f.shift and f.cmd) then return false end
+
+  local name = hs.keycodes.map[e:getKeyCode()]
+
+  for _, c in ipairs(chords) do
+    if c.key == name then return false end
+  end
+  -- Kafelkowanie okien przechwytuje system, zanim dojdzie tutaj — a gdyby jednak
+  -- doszło, to i tak działa, więc toast byłby kłamstwem.
+  for _, s in ipairs(system) do
+    if s.name == name then return false end
+  end
+
+  showUnbound(KEY_LABEL[name] or name or "?")
+  return false
+end):start()
 
 -- Skróty ------------------------------------------------------------------
 
