@@ -2,8 +2,10 @@ local M = {}
 
 local script = os.getenv("HOME") .. "/.local/bin/speech-to-text.sh"
 
--- Hyper (⌃⌥⇧⌘) składa Karabiner z przytrzymanego Caps Locka.
-local HYPER = { "ctrl", "alt", "shift", "cmd" }
+-- Akordy rejestrujemy przez hyper.chord, żeby trafiły do ściągi pokazywanej
+-- przy przytrzymanym Hyperze. To wciąga hyper wcześniej, niż robi to init.lua —
+-- require cachuje, więc tamten load("hyper") jest już tylko potwierdzeniem.
+local hyper = require("hyper")
 
 -- Wygląd overlaya. Ta sama paleta i proporcje co ściąga w hyper.lua, żeby oba
 -- wskaźniki wyglądały jak jedna rodzina.
@@ -404,7 +406,7 @@ M.submit:disable()
 -- Przełącznik: pierwsze wciśnięcie zaczyna nagrywanie, drugie je kończy.
 -- Nie ma tu nic do przytrzymania, więc nagranie nie urywa się przez
 -- przypadkowe puszczenie klawisza.
-M.trigger = hs.hotkey.bind(HYPER, "q", function()
+M.trigger = hyper.chord("q", "Dyktowanie", function()
   if recording then
     stopRecording()
   else
@@ -420,7 +422,7 @@ end)
 -- przy układzie ISO daje backtick — i pod tym znakiem widzi go hs.keycodes.map.
 -- Reguły Karabinera nie kaskadują, więc podmiana kończy się na tym jednym
 -- kroku; sam klawisz zachowuje swój ` i ~ poza kombinacją z Hyperem.
-M.repeatPaste = hs.hotkey.bind(HYPER, "`", function()
+M.repeatPaste = hyper.chord("`", "Wklej ponownie", function()
   show()
   if lastText then
     pasteText(lastText)

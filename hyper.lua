@@ -28,9 +28,19 @@ M.mode = hs.hotkey.modal.new()
 -- Opisy skrótów do ściągi, w kolejności rejestracji.
 local entries = {}
 
+-- To samo dla akordów z przytrzymanym Hyperem — osobna lista, bo to osobny
+-- zestaw skrótów: pod trzymanym Hyperem litery z M.bind nie działają.
+local chords = {}
+
+-- Hyper (⌃⌥⇧⌘) składa Karabiner z przytrzymanego Caps Locka.
+local HYPER = { "ctrl", "alt", "shift", "cmd" }
+
 local timeoutTimer = nil
 local hintTimer = nil
 local hint = nil
+
+-- Definicja przy ściądze akordów niżej; M.chord musi ją chować po trafieniu.
+local hideChordHint
 
 -- Paleta Solarized Light (Ethan Schoonover). Tło jest ciepłe kremowe, nie białe
 -- — to jej znak rozpoznawczy, więc trzymamy się oryginalnych wartości.
@@ -58,13 +68,9 @@ local function color(c, alpha)
   return { red = c.red, green = c.green, blue = c.blue, alpha = alpha or 1 }
 end
 
-local function buildHint()
-  local rows = {}
-  for _, e in ipairs(entries) do
-    rows[#rows+1] = { key = e.key, label = e.label, dim = false }
-  end
-  rows[#rows+1] = { key = "esc", label = "anuluj", dim = true }
-
+-- Rysuje płytkę ze ściągą. rows to lista { key, label, dim } — dim oznacza
+-- wiersz drugorzędny (mniejszy klawisz, przygaszone kolory).
+local function buildRows(title, rows)
   -- Przy dłuższej liście dzielimy na dwie kolumny, żeby płytka nie rosła w słup.
   -- Pierwsza kolumna dostaje nadmiarowy wiersz przy nieparzystej liczbie.
   local cols = (#rows > SPLIT_AT) and 2 or 1
@@ -100,7 +106,7 @@ local function buildHint()
                 strokeWidth = 1 }
 
   -- Nagłówek z cienką linią oddzielającą.
-  c[#c + 1] = { type = "text", text = "Skróty", textSize = 12,
+  c[#c + 1] = { type = "text", text = title, textSize = 12,
                 textColor = color(S.base00, 0.75),
                 textFont = "JetBrainsMonoNF-Bold",
                 frame = { x = PAD, y = PAD - 2, w = w - PAD * 2, h = 18 } }
@@ -139,6 +145,16 @@ local function buildHint()
   end
 
   return c
+end
+
+-- Ściąga trybu leadera: skróty spod stuknięcia Caps Locka.
+local function buildHint()
+  local rows = {}
+  for _, e in ipairs(entries) do
+    rows[#rows+1] = { key = e.key, label = e.label, dim = false }
+  end
+  rows[#rows+1] = { key = "esc", label = "anuluj", dim = true }
+  return buildRows("Skróty", rows)
 end
 
 local function hideHint()
@@ -180,6 +196,20 @@ function M.bind(key, label, action)
   end)
 end
 
+-- Akord z przytrzymanym Hyperem. W przeciwieństwie do M.bind nie ma tu trybu
+-- do opuszczenia — Karabiner trzyma modyfikatory, a hs.hotkey łapie kombinację
+-- wprost. Etykieta trafia do ściągi pokazywanej przy dłuższym przytrzymaniu.
+--
+--   M.chord("q", "Dyktowanie", function() ... end)
+function M.chord(key, label, action)
+  chords[#chords+1] = { key = key, label = label }
+  return hs.hotkey.bind(HYPER, key, function()
+    -- Bez tego ściąga wisiałaby aż do puszczenia Hypera, już po akcji.
+    hideChordHint()
+    action()
+  end)
+end
+
 -- Skrót otwierający aplikację po nazwie — najczęstszy przypadek, więc ma
 -- własny pomocnik zamiast powtarzanego launchOrFocus. Nazwa aplikacji służy
 -- zarazem za etykietę w ściądze.
@@ -193,7 +223,53 @@ end
 -- coś w Lua wciąż się do niego odwołuje.
 M.trigger = hs.hotkey.bind({}, "f18", function() M.mode:enter() end)
 
+-- Ściąga akordów -----------------------------------------------------------
+--
+-- Pod skrótem, a nie pod samym przytrzymaniem Hypera: Karabiner wysyła
+-- modyfikatory z „lazy", czyli wstrzymuje je do wciśnięcia drugiego klawisza,
+-- więc puste przytrzymanie nie daje tu żadnego zdarzenia, na którym można by
+-- się zawiesić.
+
+local chordHint = nil
+
+hideChordHint = function()
+  if chordHint then
+    M.chordEscape:disable()
+    chordHint:hide(0.12) ; chordHint:delete() ; chordHint = nil
+  end
+end
+
+-- Escape zamyka ściągę. Jak przy dyktowaniu: skrót istnieje cały czas, ale
+-- włączony jest tylko wtedy, gdy ściąga wisi — inaczej przejąłby Escape
+-- w całym systemie.
+M.chordEscape = hs.hotkey.new({}, "escape", function() hideChordHint() end)
+M.chordEscape:disable()
+
 -- Skróty ------------------------------------------------------------------
+
+-- Ściąga akordów. Hyper+/ nie dociera tu jako akord — Karabiner gubi to jedno
+-- zdarzenie po drodze (Hyper+Q przechodzi, Hyper+/ nie generuje niczego), więc
+-- osobna reguła zamienia je na F19 i pod nim wisi ten skrót.
+--
+-- Ściąga sama siedzi w spisie, więc widać, czym ją zamknąć.
+M.hintKey = hs.hotkey.bind({}, "f19", function()
+  -- Drugie wciśnięcie zamyka — ściągę trzeba dać się schować tym samym skrótem,
+  -- którym się ją otwiera.
+  if chordHint then hideChordHint() ; return end
+
+  local rows = {}
+  for _, e in ipairs(chords) do
+    rows[#rows+1] = { key = e.key, label = e.label, dim = false }
+  end
+  if #rows == 0 then return end
+  -- Ta ściąga nie przechodzi przez M.chord, więc w rejestrze jej nie ma.
+  rows[#rows+1] = { key = "/", label = "ta ściąga", dim = true }
+  rows[#rows+1] = { key = "esc", label = "zamknij", dim = true }
+
+  chordHint = buildRows("Hyper", rows)
+  chordHint:show(0.12)
+  M.chordEscape:enable()
+end)
 
 M.app("b", "Brave Browser")
 M.app("t", "Ghostty")
